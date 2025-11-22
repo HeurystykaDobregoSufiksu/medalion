@@ -30,6 +30,7 @@ public class PolymarketWebSocketService : IPolymarketWebSocketService, IDisposab
     private readonly ILogger<PolymarketWebSocketService> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly JsonSerializerOptions _jsonOptions;
+    private readonly PolymarketTradingClient? _tradingClient;
 
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -57,10 +58,12 @@ public class PolymarketWebSocketService : IPolymarketWebSocketService, IDisposab
     // Properties
     public bool IsConnected => _webSocket?.State == WebSocketState.Open;
     public IReadOnlyList<string> MonitoredCategories => new[] { "Finance", "Crypto" };
+    public bool IsTradingEnabled => _tradingClient != null;
 
     public PolymarketWebSocketService(
         ILogger<PolymarketWebSocketService> logger,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        TradingConfig? tradingConfig = null)
     {
         _logger = logger;
         _httpClientFactory = httpClientFactory;
@@ -72,6 +75,19 @@ public class PolymarketWebSocketService : IPolymarketWebSocketService, IDisposab
         };
 
         _statistics.SessionStartTime = DateTime.UtcNow;
+
+        // Initialize trading client if config is provided
+        if (tradingConfig != null)
+        {
+            var tradingLogger = LoggerFactory.Create(builder => builder.AddConsole())
+                .CreateLogger<PolymarketTradingClient>();
+            _tradingClient = new PolymarketTradingClient(tradingLogger, httpClientFactory, tradingConfig);
+            _logger.LogInformation("Trading functionality enabled for wallet: {Address}", tradingConfig.WalletAddress);
+        }
+        else
+        {
+            _logger.LogInformation("Trading functionality disabled - no trading config provided");
+        }
     }
 
     /// <summary>
@@ -725,6 +741,182 @@ public class PolymarketWebSocketService : IPolymarketWebSocketService, IDisposab
         _statistics.Uptime = DateTime.UtcNow - _statistics.SessionStartTime;
         _statistics.TrackedMarketsCount = _trackedMarkets.Count;
         return Task.FromResult(_statistics);
+    }
+
+    // ================== TRADING METHODS ==================
+
+    /// <summary>
+    /// Places a market order to buy or sell shares immediately at best available price
+    /// REQUIRES: Trading configuration to be provided in constructor
+    /// </summary>
+    /// <param name="tokenId">Token ID of the outcome to trade</param>
+    /// <param name="amount">Dollar amount to spend (buy) or shares value (sell)</param>
+    /// <param name="side">Buy or Sell</param>
+    /// <returns>Order response with status</returns>
+    public async Task<OrderResponse> PlaceMarketOrderAsync(string tokenId, decimal amount, OrderSide side)
+    {
+        if (_tradingClient == null)
+        {
+            throw new InvalidOperationException(
+                "Trading is not enabled. Please provide TradingConfig in the constructor to enable trading.");
+        }
+
+        var request = new MarketOrderRequest
+        {
+            TokenId = tokenId,
+            Amount = amount,
+            Side = side
+        };
+
+        return await _tradingClient.PlaceMarketOrderAsync(request);
+    }
+
+    /// <summary>
+    /// Places a limit order at a specific price
+    /// REQUIRES: Trading configuration to be provided in constructor
+    /// </summary>
+    /// <param name="tokenId">Token ID of the outcome to trade</param>
+    /// <param name="price">Price per share (0.01 to 0.99)</param>
+    /// <param name="size">Number of shares to trade</param>
+    /// <param name="side">Buy or Sell</param>
+    /// <param name="expiration">Optional: Expiration timestamp for GTD orders</param>
+    /// <returns>Order response with status</returns>
+    public async Task<OrderResponse> PlaceLimitOrderAsync(
+        string tokenId,
+        decimal price,
+        decimal size,
+        OrderSide side,
+        long? expiration = null)
+    {
+        if (_tradingClient == null)
+        {
+            throw new InvalidOperationException(
+                "Trading is not enabled. Please provide TradingConfig in the constructor to enable trading.");
+        }
+
+        var request = new LimitOrderRequest
+        {
+            TokenId = tokenId,
+            Price = price,
+            Size = size,
+            Side = side,
+            Expiration = expiration
+        };
+
+        return await _tradingClient.PlaceLimitOrderAsync(request);
+    }
+
+    /// <summary>
+    /// Quick buy helper - purchases shares at market price
+    /// </summary>
+    /// <param name="tokenId">Token ID to buy</param>
+    /// <param name="dollarAmount">Amount in dollars to spend</param>
+    /// <returns>Order response</returns>
+    public Task<OrderResponse> BuyAsync(string tokenId, decimal dollarAmount)
+    {
+        return PlaceMarketOrderAsync(tokenId, dollarAmount, OrderSide.Buy);
+    }
+
+    /// <summary>
+    /// Quick sell helper - sells shares at market price
+    /// </summary>
+    /// <param name="tokenId">Token ID to sell</param>
+    /// <param name="sharesValue">Value of shares to sell</param>
+    /// <returns>Order response</returns>
+    public Task<OrderResponse> SellAsync(string tokenId, decimal sharesValue)
+    {
+        return PlaceMarketOrderAsync(tokenId, sharesValue, OrderSide.Sell);
+    }
+
+    /// <summary>
+    /// Cancels a specific order by ID
+    /// REQUIRES: Trading configuration to be provided in constructor
+    /// </summary>
+    /// <param name="orderId">Order ID to cancel</param>
+    /// <returns>True if cancelled successfully</returns>
+    public async Task<bool> CancelOrderAsync(string orderId)
+    {
+        if (_tradingClient == null)
+        {
+            throw new InvalidOperationException(
+                "Trading is not enabled. Please provide TradingConfig in the constructor to enable trading.");
+        }
+
+        return await _tradingClient.CancelOrderAsync(orderId);
+    }
+
+    /// <summary>
+    /// Cancels all open orders
+    /// REQUIRES: Trading configuration to be provided in constructor
+    /// </summary>
+    /// <returns>Number of orders cancelled</returns>
+    public async Task<int> CancelAllOrdersAsync()
+    {
+        if (_tradingClient == null)
+        {
+            throw new InvalidOperationException(
+                "Trading is not enabled. Please provide TradingConfig in the constructor to enable trading.");
+        }
+
+        return await _tradingClient.CancelAllOrdersAsync();
+    }
+
+    /// <summary>
+    /// Gets all open orders for the trading wallet
+    /// REQUIRES: Trading configuration to be provided in constructor
+    /// </summary>
+    /// <param name="marketFilter">Optional market ID filter</param>
+    /// <param name="assetFilter">Optional asset ID filter</param>
+    /// <returns>List of open orders</returns>
+    public async Task<List<OpenOrder>> GetOpenOrdersAsync(string? marketFilter = null, string? assetFilter = null)
+    {
+        if (_tradingClient == null)
+        {
+            throw new InvalidOperationException(
+                "Trading is not enabled. Please provide TradingConfig in the constructor to enable trading.");
+        }
+
+        var params_ = new OpenOrderParams
+        {
+            Market = marketFilter,
+            AssetId = assetFilter
+        };
+
+        return await _tradingClient.GetOpenOrdersAsync(params_);
+    }
+
+    /// <summary>
+    /// Gets the best available price for buying or selling a token
+    /// </summary>
+    /// <param name="tokenId">Token ID to query</param>
+    /// <param name="side">Buy or Sell</param>
+    /// <returns>Best available price</returns>
+    public async Task<decimal> GetBestPriceAsync(string tokenId, OrderSide side)
+    {
+        if (_tradingClient == null)
+        {
+            // If no trading client, try to get price from order book updates
+            _logger.LogWarning("Trading client not available. Cannot get real-time price.");
+            return 0;
+        }
+
+        return await _tradingClient.GetBestPriceAsync(tokenId, side);
+    }
+
+    /// <summary>
+    /// Gets the midpoint price (average of bid and ask) for a token
+    /// </summary>
+    /// <param name="tokenId">Token ID to query</param>
+    /// <returns>Midpoint price</returns>
+    public async Task<decimal> GetMidpointPriceAsync(string tokenId)
+    {
+        if (_tradingClient == null)
+        {
+            _logger.LogWarning("Trading client not available. Cannot get real-time price.");
+            return 0;
+        }
+
+        return await _tradingClient.GetMidpointPriceAsync(tokenId);
     }
 
     public void Dispose()
