@@ -258,7 +258,352 @@ public class PolymarketExampleUsage
     }
 
     /// <summary>
-    /// Example 4: Data collection for analysis
+    /// Example 4: Trading with market orders
+    /// Demonstrates how to enable trading and execute buy/sell orders
+    /// </summary>
+    public static async Task TradingMarketOrdersExample()
+    {
+        // SECURITY: Never hardcode private keys! Use environment variables or secure key management
+        var privateKey = Environment.GetEnvironmentVariable("POLYMARKET_PRIVATE_KEY")
+            ?? throw new InvalidOperationException("POLYMARKET_PRIVATE_KEY environment variable not set");
+
+        // Configure trading credentials
+        var tradingConfig = new TradingConfig
+        {
+            PrivateKey = privateKey,
+            ChainId = 137, // Polygon mainnet (use 80001 for Mumbai testnet)
+            SignatureType = 0 // 0 = EOA/MetaMask, 1 = Email/Magic, 2 = Proxy
+        };
+
+        var host = Host.CreateDefaultBuilder()
+            .ConfigureServices((context, services) =>
+            {
+                services.AddHttpClient();
+
+                // Register service WITH trading config to enable trading
+                services.AddSingleton<IPolymarketWebSocketService>(sp =>
+                {
+                    var logger = sp.GetRequiredService<ILogger<PolymarketWebSocketService>>();
+                    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+                    return new PolymarketWebSocketService(logger, httpClientFactory, tradingConfig);
+                });
+
+                services.AddLogging(builder => builder.AddConsole());
+            })
+            .Build();
+
+        var service = host.Services.GetRequiredService<IPolymarketWebSocketService>();
+
+        // Verify trading is enabled
+        if (!service.IsTradingEnabled)
+        {
+            throw new InvalidOperationException("Trading is not enabled!");
+        }
+
+        Console.WriteLine($"✅ Trading enabled for wallet: {tradingConfig.WalletAddress}");
+
+        // Start WebSocket connection
+        await service.StartAsync();
+
+        // Wait for connection
+        await Task.Delay(5000);
+
+        // Get tracked markets
+        var markets = await service.GetTrackedMarketsAsync();
+        Console.WriteLine($"\nFound {markets.Count} markets in Finance and Crypto categories");
+
+        // Select a market to trade (first market with liquidity)
+        var tradableMarket = markets
+            .SelectMany(e => e.Markets.Select(m => new { Event = e, Market = m }))
+            .FirstOrDefault(x => x.Market.Liquidity > 1000);
+
+        if (tradableMarket == null)
+        {
+            Console.WriteLine("No markets with sufficient liquidity found");
+            return;
+        }
+
+        var tokenId = tradableMarket.Market.ClobTokenIds.FirstOrDefault();
+        if (string.IsNullOrEmpty(tokenId))
+        {
+            Console.WriteLine("No token ID found for market");
+            return;
+        }
+
+        Console.WriteLine($"\n📊 Trading Market: {tradableMarket.Event.Title}");
+        Console.WriteLine($"Token ID: {tokenId}");
+        Console.WriteLine($"Current Liquidity: ${tradableMarket.Market.Liquidity:N2}");
+
+        // Example 1: Buy $10 worth at market price
+        Console.WriteLine("\n🔵 Placing BUY market order for $10...");
+        var buyResult = await service.BuyAsync(tokenId, 10m);
+
+        if (buyResult.Success)
+        {
+            Console.WriteLine($"✅ Buy order successful! Order ID: {buyResult.OrderId}");
+        }
+        else
+        {
+            Console.WriteLine($"❌ Buy order failed: {buyResult.ErrorMsg}");
+        }
+
+        // Wait a bit
+        await Task.Delay(2000);
+
+        // Example 2: Get current price
+        var currentPrice = await service.GetMidpointPriceAsync(tokenId);
+        Console.WriteLine($"\n💵 Current midpoint price: {currentPrice:F4}");
+
+        // Example 3: Check open orders
+        var openOrders = await service.GetOpenOrdersAsync();
+        Console.WriteLine($"\n📋 You have {openOrders.Count} open orders");
+        foreach (var order in openOrders.Take(5))
+        {
+            Console.WriteLine($"  Order {order.Id}: {order.Side} {order.RemainingSize} @ {order.Price:F4}");
+        }
+
+        Console.WriteLine("\nPress any key to stop...");
+        Console.ReadKey();
+
+        await service.StopAsync();
+    }
+
+    /// <summary>
+    /// Example 5: Trading with limit orders
+    /// Demonstrates placing limit orders at specific prices
+    /// </summary>
+    public static async Task TradingLimitOrdersExample()
+    {
+        var privateKey = Environment.GetEnvironmentVariable("POLYMARKET_PRIVATE_KEY")
+            ?? throw new InvalidOperationException("POLYMARKET_PRIVATE_KEY not set");
+
+        var tradingConfig = new TradingConfig
+        {
+            PrivateKey = privateKey,
+            ChainId = 137,
+            SignatureType = 0
+        };
+
+        var host = Host.CreateDefaultBuilder()
+            .ConfigureServices((context, services) =>
+            {
+                services.AddHttpClient();
+                services.AddSingleton<IPolymarketWebSocketService>(sp =>
+                {
+                    var logger = sp.GetRequiredService<ILogger<PolymarketWebSocketService>>();
+                    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+                    return new PolymarketWebSocketService(logger, httpClientFactory, tradingConfig);
+                });
+                services.AddLogging(builder => builder.AddConsole());
+            })
+            .Build();
+
+        var service = host.Services.GetRequiredService<IPolymarketWebSocketService>();
+
+        await service.StartAsync();
+        await Task.Delay(5000);
+
+        var markets = await service.GetTrackedMarketsAsync();
+        var tradableMarket = markets
+            .SelectMany(e => e.Markets.Select(m => new { Event = e, Market = m }))
+            .FirstOrDefault(x => x.Market.Liquidity > 1000);
+
+        if (tradableMarket == null) return;
+
+        var tokenId = tradableMarket.Market.ClobTokenIds.FirstOrDefault();
+        if (string.IsNullOrEmpty(tokenId)) return;
+
+        Console.WriteLine($"📊 Trading Market: {tradableMarket.Event.Title}");
+
+        // Get current best prices
+        var bidPrice = await service.GetBestPriceAsync(tokenId, OrderSide.Buy);
+        var askPrice = await service.GetBestPriceAsync(tokenId, OrderSide.Sell);
+        var midPrice = await service.GetMidpointPriceAsync(tokenId);
+
+        Console.WriteLine($"\n💵 Current Prices:");
+        Console.WriteLine($"  Best Bid: {bidPrice:F4}");
+        Console.WriteLine($"  Midpoint: {midPrice:F4}");
+        Console.WriteLine($"  Best Ask: {askPrice:F4}");
+        Console.WriteLine($"  Spread: {(askPrice - bidPrice):F4} ({((askPrice - bidPrice) / midPrice * 100):F2}%)");
+
+        // Place a limit buy order below market (maker order)
+        var limitBuyPrice = midPrice * 0.95m; // 5% below mid
+        var limitBuySize = 100m; // 100 shares
+
+        Console.WriteLine($"\n🔵 Placing LIMIT BUY order:");
+        Console.WriteLine($"  Price: {limitBuyPrice:F4}");
+        Console.WriteLine($"  Size: {limitBuySize} shares");
+
+        var limitBuyResult = await service.PlaceLimitOrderAsync(
+            tokenId,
+            limitBuyPrice,
+            limitBuySize,
+            OrderSide.Buy
+        );
+
+        if (limitBuyResult.Success)
+        {
+            Console.WriteLine($"✅ Limit buy order placed! Order ID: {limitBuyResult.OrderId}");
+
+            // Wait a bit, then cancel the order
+            await Task.Delay(5000);
+
+            Console.WriteLine($"\n❌ Cancelling order {limitBuyResult.OrderId}...");
+            var cancelled = await service.CancelOrderAsync(limitBuyResult.OrderId);
+
+            if (cancelled)
+            {
+                Console.WriteLine("✅ Order cancelled successfully");
+            }
+            else
+            {
+                Console.WriteLine("❌ Failed to cancel order");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"❌ Limit buy order failed: {limitBuyResult.ErrorMsg}");
+        }
+
+        await service.StopAsync();
+    }
+
+    /// <summary>
+    /// Example 6: Automated trading bot with signals
+    /// Combines market data streaming with automated trading
+    /// </summary>
+    public static async Task AutomatedTradingBotExample()
+    {
+        var privateKey = Environment.GetEnvironmentVariable("POLYMARKET_PRIVATE_KEY")
+            ?? throw new InvalidOperationException("POLYMARKET_PRIVATE_KEY not set");
+
+        var tradingConfig = new TradingConfig
+        {
+            PrivateKey = privateKey,
+            ChainId = 137,
+            SignatureType = 0
+        };
+
+        var host = Host.CreateDefaultBuilder()
+            .ConfigureServices((context, services) =>
+            {
+                services.AddHttpClient();
+                services.AddSingleton<IPolymarketWebSocketService>(sp =>
+                {
+                    var logger = sp.GetRequiredService<ILogger<PolymarketWebSocketService>>();
+                    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+                    return new PolymarketWebSocketService(logger, httpClientFactory, tradingConfig);
+                });
+                services.AddLogging(builder => builder.AddConsole());
+            })
+            .Build();
+
+        var service = host.Services.GetRequiredService<IPolymarketWebSocketService>();
+
+        Console.WriteLine($"🤖 Starting Automated Trading Bot");
+        Console.WriteLine($"Wallet: {tradingConfig.WalletAddress}");
+
+        // Trading bot configuration
+        var config = new BotConfig
+        {
+            MaxPositionSize = 100m, // Max $100 per position
+            VolatilityThreshold = 35m, // Only trade when IV > 35%
+            MinLiquidity = 5000m, // Minimum $5000 liquidity
+            ProfitTarget = 0.02m, // 2% profit target
+            StopLoss = 0.05m // 5% stop loss
+        };
+
+        var positions = new Dictionary<string, Position>();
+
+        service.OnMarketDataReceived += async (sender, data) =>
+        {
+            // Trading signal: High implied volatility + sufficient liquidity
+            if (data.ImpliedVolatility > config.VolatilityThreshold &&
+                data.Liquidity > config.MinLiquidity)
+            {
+                // Check if we already have a position
+                if (positions.ContainsKey(data.MarketId))
+                {
+                    // Manage existing position
+                    var position = positions[data.MarketId];
+                    var pnlPct = (data.Price - position.EntryPrice) / position.EntryPrice;
+
+                    // Check profit target
+                    if (pnlPct >= config.ProfitTarget)
+                    {
+                        Console.WriteLine($"🎯 PROFIT TARGET HIT: {data.MarketId} (+{pnlPct:P2})");
+                        // Close position
+                        await service.SellAsync(position.TokenId, position.Size);
+                        positions.Remove(data.MarketId);
+                    }
+                    // Check stop loss
+                    else if (pnlPct <= -config.StopLoss)
+                    {
+                        Console.WriteLine($"🛑 STOP LOSS HIT: {data.MarketId} ({pnlPct:P2})");
+                        // Close position
+                        await service.SellAsync(position.TokenId, position.Size);
+                        positions.Remove(data.MarketId);
+                    }
+                }
+                else if (positions.Count < 5) // Max 5 concurrent positions
+                {
+                    // Open new position
+                    Console.WriteLine($"\n🚀 TRADING SIGNAL DETECTED");
+                    Console.WriteLine($"Market: {data.MarketId}");
+                    Console.WriteLine($"Category: {data.Category}");
+                    Console.WriteLine($"Price: {data.Price:F4}");
+                    Console.WriteLine($"IV: {data.ImpliedVolatility:F2}%");
+                    Console.WriteLine($"Liquidity: ${data.Liquidity:N2}");
+
+                    // Execute trade
+                    var tokenId = data.AssetId; // Assuming AssetId is the token ID
+                    var result = await service.BuyAsync(tokenId, config.MaxPositionSize);
+
+                    if (result.Success)
+                    {
+                        positions[data.MarketId] = new Position
+                        {
+                            TokenId = tokenId,
+                            MarketId = data.MarketId,
+                            EntryPrice = data.Price,
+                            Size = config.MaxPositionSize / data.Price,
+                            EntryTime = DateTime.UtcNow
+                        };
+
+                        Console.WriteLine($"✅ Position opened: {result.OrderId}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"❌ Trade failed: {result.ErrorMsg}");
+                    }
+                }
+            }
+        };
+
+        await service.StartAsync();
+
+        // Print status every minute
+        var statusTimer = new Timer(async _ =>
+        {
+            Console.WriteLine($"\n=== BOT STATUS ===");
+            Console.WriteLine($"Active Positions: {positions.Count}");
+
+            var openOrders = await service.GetOpenOrdersAsync();
+            Console.WriteLine($"Open Orders: {openOrders.Count}");
+
+            foreach (var position in positions.Values)
+            {
+                var age = DateTime.UtcNow - position.EntryTime;
+                Console.WriteLine($"  {position.MarketId}: {position.Size:F2} shares @ {position.EntryPrice:F4} (Age: {age.TotalMinutes:F0}m)");
+            }
+            Console.WriteLine("==================\n");
+        }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+
+        await Task.Delay(Timeout.Infinite);
+    }
+
+    /// <summary>
+    /// Example 7: Data collection for analysis
     /// </summary>
     public static async Task DataCollectionExample()
     {
@@ -362,6 +707,30 @@ public class PolymarketExampleUsage
         public decimal Volume { get; set; }
         public decimal Liquidity { get; set; }
         public decimal Spread { get; set; }
+    }
+
+    /// <summary>
+    /// Trading bot configuration
+    /// </summary>
+    private class BotConfig
+    {
+        public decimal MaxPositionSize { get; set; }
+        public decimal VolatilityThreshold { get; set; }
+        public decimal MinLiquidity { get; set; }
+        public decimal ProfitTarget { get; set; }
+        public decimal StopLoss { get; set; }
+    }
+
+    /// <summary>
+    /// Position tracking
+    /// </summary>
+    private class Position
+    {
+        public string TokenId { get; set; } = string.Empty;
+        public string MarketId { get; set; } = string.Empty;
+        public decimal EntryPrice { get; set; }
+        public decimal Size { get; set; }
+        public DateTime EntryTime { get; set; }
     }
 }
 

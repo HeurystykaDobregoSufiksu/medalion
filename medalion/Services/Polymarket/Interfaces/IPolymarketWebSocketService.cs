@@ -50,6 +50,11 @@ public interface IPolymarketWebSocketService
     IReadOnlyList<string> MonitoredCategories { get; }
 
     /// <summary>
+    /// Indicates whether trading functionality is enabled
+    /// </summary>
+    bool IsTradingEnabled { get; }
+
+    /// <summary>
     /// Starts the WebSocket connection and begins streaming data
     /// Automatically subscribes to Finance and Crypto categories
     /// </summary>
@@ -75,6 +80,58 @@ public interface IPolymarketWebSocketService
     /// Get statistics about the current streaming session
     /// </summary>
     Task<StreamingStatistics> GetStatisticsAsync();
+
+    // ================== TRADING METHODS ==================
+
+    /// <summary>
+    /// Places a market order to buy or sell shares immediately
+    /// REQUIRES: Trading configuration to be provided in constructor
+    /// </summary>
+    Task<OrderResponse> PlaceMarketOrderAsync(string tokenId, decimal amount, OrderSide side);
+
+    /// <summary>
+    /// Places a limit order at a specific price
+    /// REQUIRES: Trading configuration to be provided in constructor
+    /// </summary>
+    Task<OrderResponse> PlaceLimitOrderAsync(string tokenId, decimal price, decimal size, OrderSide side, long? expiration = null);
+
+    /// <summary>
+    /// Quick helper to buy shares at market price
+    /// </summary>
+    Task<OrderResponse> BuyAsync(string tokenId, decimal dollarAmount);
+
+    /// <summary>
+    /// Quick helper to sell shares at market price
+    /// </summary>
+    Task<OrderResponse> SellAsync(string tokenId, decimal sharesValue);
+
+    /// <summary>
+    /// Cancels a specific order by ID
+    /// REQUIRES: Trading configuration to be provided in constructor
+    /// </summary>
+    Task<bool> CancelOrderAsync(string orderId);
+
+    /// <summary>
+    /// Cancels all open orders
+    /// REQUIRES: Trading configuration to be provided in constructor
+    /// </summary>
+    Task<int> CancelAllOrdersAsync();
+
+    /// <summary>
+    /// Gets all open orders for the trading wallet
+    /// REQUIRES: Trading configuration to be provided in constructor
+    /// </summary>
+    Task<List<OpenOrder>> GetOpenOrdersAsync(string? marketFilter = null, string? assetFilter = null);
+
+    /// <summary>
+    /// Gets the best available price for buying or selling a token
+    /// </summary>
+    Task<decimal> GetBestPriceAsync(string tokenId, OrderSide side);
+
+    /// <summary>
+    /// Gets the midpoint price (average of bid and ask) for a token
+    /// </summary>
+    Task<decimal> GetMidpointPriceAsync(string tokenId);
 }
 
 /// <summary>
