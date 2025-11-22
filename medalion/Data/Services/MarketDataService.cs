@@ -69,12 +69,13 @@ public class MarketDataService : IMarketDataService
         var snapshot = new StockQuoteSnapshot
         {
             AssetId = assetId,
+            Symbol = quote.Symbol,
             QuoteTimestamp = quote.Timestamp,
             BidPrice = quote.BidPrice,
             BidSize = quote.BidSize,
             AskPrice = quote.AskPrice,
             AskSize = quote.AskSize,
-        
+            MidPrice = quote.MidPrice
         };
 
         var result = await _stockQuoteRepository.AddAsync(snapshot);
@@ -92,15 +93,16 @@ public class MarketDataService : IMarketDataService
         var barData = new StockBarData
         {
             AssetId = assetId,
+            Symbol = bar.Symbol ?? string.Empty,
             Timeframe = timeframe,
             BarTimestamp = bar.Timestamp,
-            OpenPrice = bar.Open,
-            HighPrice = bar.High,
-            LowPrice = bar.Low,
-            ClosePrice = bar.Close,
+            Open = bar.Open,
+            High = bar.High,
+            Low = bar.Low,
+            Close = bar.Close,
             Volume = bar.Volume,
-            TradeCount = bar.TradeCount ?? 0,
-            VWAP = bar.VWAP
+            TradeCount = bar.TradeCount,
+            VWAP = bar.VolumeWeightedAveragePrice
         };
 
         var result = await _stockBarRepository.AddAsync(barData);
@@ -134,15 +136,12 @@ public class MarketDataService : IMarketDataService
 
         return new StockQuote
         {
+            Symbol = snapshot.Symbol,
             Timestamp = snapshot.QuoteTimestamp,
             BidPrice = snapshot.BidPrice,
             BidSize = snapshot.BidSize,
             AskPrice = snapshot.AskPrice,
-            AskSize = snapshot.AskSize,
-            BidExchange = snapshot.BidExchange,
-            AskExchange = snapshot.AskExchange,
-            Conditions = snapshot.Conditions?.Split(',').ToList(),
-            Tape = snapshot.Tape
+            AskSize = snapshot.AskSize
         };
     }
 
@@ -158,12 +157,17 @@ public class MarketDataService : IMarketDataService
 
         return bars.Select(b => new MarketBarDto
         {
-            Timestamp = b.BarTimestamp,
-            Open = b.OpenPrice,
-            High = b.HighPrice,
-            Low = b.LowPrice,
-            Close = b.ClosePrice,
+            Id = b.Id,
+            AssetId = b.AssetId,
+            Symbol = b.Symbol,
+            BarTimestamp = b.BarTimestamp,
+            Timeframe = b.Timeframe,
+            Open = b.Open,
+            High = b.High,
+            Low = b.Low,
+            Close = b.Close,
             Volume = b.Volume,
+            TradeCount = b.TradeCount,
             VWAP = b.VWAP
         });
     }
@@ -182,12 +186,13 @@ public class MarketDataService : IMarketDataService
         var snapshot = new CryptoQuoteSnapshot
         {
             AssetId = assetId,
+            Symbol = quote.Symbol,
             QuoteTimestamp = quote.Timestamp,
             BidPrice = quote.BidPrice,
             BidSize = quote.BidSize,
             AskPrice = quote.AskPrice,
             AskSize = quote.AskSize,
-            Exchange = quote.Exchange ?? string.Empty
+            MidPrice = quote.MidPrice
         };
 
         var result = await _cryptoQuoteRepository.AddAsync(snapshot);
@@ -205,15 +210,16 @@ public class MarketDataService : IMarketDataService
         var barData = new CryptoBarData
         {
             AssetId = assetId,
+            Symbol = bar.Symbol ?? string.Empty,
             Timeframe = timeframe,
             BarTimestamp = bar.Timestamp,
-            OpenPrice = bar.Open,
-            HighPrice = bar.High,
-            LowPrice = bar.Low,
-            ClosePrice = bar.Close,
+            Open = bar.Open,
+            High = bar.High,
+            Low = bar.Low,
+            Close = bar.Close,
             Volume = bar.Volume,
-            TradeCount = bar.TradeCount ?? 0,
-            VWAP = bar.VWAP
+            TradeCount = bar.TradeCount,
+            VWAP = bar.VolumeWeightedAveragePrice
         };
 
         var result = await _cryptoBarRepository.AddAsync(barData);
@@ -249,12 +255,12 @@ public class MarketDataService : IMarketDataService
 
         return new CryptoQuote
         {
+            Symbol = latest.Symbol,
             Timestamp = latest.QuoteTimestamp,
             BidPrice = latest.BidPrice,
             BidSize = latest.BidSize,
             AskPrice = latest.AskPrice,
-            AskSize = latest.AskSize,
-            Exchange = latest.Exchange
+            AskSize = latest.AskSize
         };
     }
 
@@ -270,12 +276,17 @@ public class MarketDataService : IMarketDataService
 
         return bars.Select(b => new MarketBarDto
         {
-            Timestamp = b.BarTimestamp,
-            Open = b.OpenPrice,
-            High = b.HighPrice,
-            Low = b.LowPrice,
-            Close = b.ClosePrice,
+            Id = b.Id,
+            AssetId = b.AssetId,
+            Symbol = b.Symbol,
+            BarTimestamp = b.BarTimestamp,
+            Timeframe = b.Timeframe,
+            Open = b.Open,
+            High = b.High,
+            Low = b.Low,
+            Close = b.Close,
             Volume = b.Volume,
+            TradeCount = b.TradeCount,
             VWAP = b.VWAP
         });
     }
@@ -293,16 +304,20 @@ public class MarketDataService : IMarketDataService
 
         // Check if contract already exists
         var existing = (await _optionContractRepository.FindAsync(
-            c => c.OptionSymbol == contract.Symbol)).FirstOrDefault();
+            c => c.Symbol == contract.Symbol)).FirstOrDefault();
 
         if (existing != null)
         {
             // Update existing contract
+            existing.UnderlyingSymbol = contract.UnderlyingSymbol;
             existing.StrikePrice = contract.StrikePrice;
             existing.ExpirationDate = contract.ExpirationDate;
-            existing.ContractType = contract.Type == OptionType.Call ? "Call" : "Put";
-            existing.OpenInterest = contract.OpenInterest ?? 0;
-            existing.ContractSize = contract.Size ?? 100;
+            existing.OptionType = contract.Type;
+            existing.OptionStyle = contract.Style;
+            existing.Status = contract.Status;
+            existing.IsTradable = contract.Tradable;
+            existing.OpenInterest = contract.OpenInterest;
+            existing.Multiplier = contract.Multiplier;
 
             await _optionContractRepository.UpdateAsync(existing);
             return existing.Id;
@@ -311,13 +326,18 @@ public class MarketDataService : IMarketDataService
         // Create new contract
         var contractData = new OptionContractData
         {
-            UnderlyingAssetId = underlyingAssetId,
-            OptionSymbol = contract.Symbol,
-            StrikePrice = contract.StrikePrice,
+            AssetId = underlyingAssetId,
+            ContractId = contract.Id,
+            Symbol = contract.Symbol,
+            UnderlyingSymbol = contract.UnderlyingSymbol,
+            Status = contract.Status,
+            IsTradable = contract.Tradable,
             ExpirationDate = contract.ExpirationDate,
-            ContractType = contract.Type == OptionType.Call ? "Call" : "Put",
-            OpenInterest = contract.OpenInterest ?? 0,
-            ContractSize = contract.Size ?? 100
+            OptionType = contract.Type,
+            OptionStyle = contract.Style,
+            StrikePrice = contract.StrikePrice,
+            Multiplier = contract.Multiplier,
+            OpenInterest = contract.OpenInterest
         };
 
         var result = await _optionContractRepository.AddAsync(contractData);
@@ -336,11 +356,13 @@ public class MarketDataService : IMarketDataService
         var quoteSnapshot = new OptionQuoteSnapshot
         {
             OptionContractId = optionContractId,
+            Symbol = quote.Symbol,
             QuoteTimestamp = quote.Timestamp,
-            BidPrice = quote.BidPrice ?? 0,
-            BidSize = quote.BidSize ?? 0,
-            AskPrice = quote.AskPrice ?? 0,
-            AskSize = quote.AskSize ?? 0,
+            BidPrice = quote.BidPrice,
+            BidSize = quote.BidSize,
+            AskPrice = quote.AskPrice,
+            AskSize = quote.AskSize,
+            MidPrice = quote.MidPrice,
             ImpliedVolatility = impliedVolatility,
             Delta = greeks?.Delta,
             Gamma = greeks?.Gamma,
@@ -400,7 +422,10 @@ public class MarketDataService : IMarketDataService
             IsActive = polymarketEvent.Active,
             IsClosed = polymarketEvent.Closed,
             IsMonitored = true,
-            EventCreatedAt = polymarketEvent.CreationTime ?? DateTime.UtcNow,
+            EventCreatedAt = polymarketEvent.CreatedAt,
+            EndDate = polymarketEvent.EndDate,
+            TotalVolume = polymarketEvent.Volume,
+            TotalLiquidity = polymarketEvent.Liquidity,
             Tags = string.Join(",", polymarketEvent.Tags ?? new List<string>())
         };
 
@@ -427,10 +452,13 @@ public class MarketDataService : IMarketDataService
         if (existing != null)
         {
             // Update existing market
+            existing.ConditionId = market.ConditionId;
+            existing.QuestionId = market.QuestionId;
             existing.Question = market.Question ?? string.Empty;
+            existing.Outcomes = string.Join(",", market.Outcomes);
+            existing.OutcomePrices = string.Join(",", market.OutcomePrices);
             existing.Volume = market.Volume;
             existing.Liquidity = market.Liquidity;
-            existing.IsActive = market.Active;
 
             await _polymarketMarketRepository.UpdateAsync(existing);
             return existing.Id;
@@ -441,11 +469,13 @@ public class MarketDataService : IMarketDataService
         {
             PolymarketEventId = eventId,
             MarketId = market.Id,
+            ConditionId = market.ConditionId,
+            QuestionId = market.QuestionId,
             Question = market.Question ?? string.Empty,
             Outcomes = string.Join(",", market.Outcomes),
+            OutcomePrices = string.Join(",", market.OutcomePrices),
             Volume = market.Volume,
-            Liquidity = market.Liquidity,
-            IsActive = market.Active
+            Liquidity = market.Liquidity
         };
 
         var result = await _polymarketMarketRepository.AddAsync(marketData);
@@ -471,11 +501,20 @@ public class MarketDataService : IMarketDataService
         var snapshotData = new PolymarketSnapshot
         {
             PolymarketMarketId = market.Id,
-            SnapshotTimestamp = snapshot.Timestamp,
+            MarketId = snapshot.MarketId,
+            AssetId = snapshot.AssetId,
+            SnapshotTimestamp = DateTimeOffset.FromUnixTimeMilliseconds(snapshot.Timestamp).DateTime,
             Price = snapshot.Price,
+            LastPrice = snapshot.LastPrice,
+            Bid = snapshot.Bid,
+            Ask = snapshot.Ask,
+            Spread = snapshot.Spread,
             ImpliedVolatility = snapshot.ImpliedVolatility,
             Volume24h = snapshot.Volume24h,
-            Liquidity = snapshot.Liquidity
+            Liquidity = snapshot.Liquidity,
+            Outcome = snapshot.Outcome,
+            Category = snapshot.Category,
+            Tags = string.Join(",", snapshot.Tags ?? new List<string>())
         };
 
         var result = await _polymarketSnapshotRepository.AddAsync(snapshotData);
@@ -499,13 +538,16 @@ public class MarketDataService : IMarketDataService
 
         var tradeData = new PolymarketTradeData
         {
-            PolymarketMarketId = market.Id,
-            TradeId = trade.TradeId ?? Guid.NewGuid().ToString(),
-            TradeTimestamp = trade.Timestamp,
+            TradeId = trade.Id,
+            MarketId = trade.MarketId,
+            AssetId = trade.AssetId,
+            TradeTimestamp = DateTimeOffset.FromUnixTimeMilliseconds(trade.Timestamp).DateTime,
             Price = trade.Price,
             Size = trade.Size,
-            Side = trade.Side ?? string.Empty,
-            Outcome = trade.Outcome ?? string.Empty
+            Side = trade.Side,
+            Outcome = trade.Outcome,
+            MakerAddress = trade.MakerAddress,
+            TakerAddress = trade.TakerAddress
         };
 
         var result = await _polymarketTradeRepository.AddAsync(tradeData);
@@ -529,11 +571,13 @@ public class MarketDataService : IMarketDataService
 
         var orderBookData = new PolymarketOrderBookSnapshot
         {
-            PolymarketMarketId = market.Id,
-            SnapshotTimestamp = orderBook.Timestamp,
-            BidsJson = System.Text.Json.JsonSerializer.Serialize(orderBook.Bids),
-            AsksJson = System.Text.Json.JsonSerializer.Serialize(orderBook.Asks),
-            Hash = orderBook.Hash ?? string.Empty
+            AssetId = orderBook.AssetId,
+            MarketId = orderBook.MarketId,
+            SnapshotTimestamp = DateTimeOffset.FromUnixTimeMilliseconds(orderBook.Timestamp).DateTime,
+            Bids = System.Text.Json.JsonSerializer.Serialize(orderBook.Bids),
+            Asks = System.Text.Json.JsonSerializer.Serialize(orderBook.Asks),
+            TotalBidSize = orderBook.Bids.Sum(b => b.Size),
+            TotalAskSize = orderBook.Asks.Sum(a => a.Size)
         };
 
         var result = await _polymarketOrderBookRepository.AddAsync(orderBookData);
@@ -556,11 +600,19 @@ public class MarketDataService : IMarketDataService
         return new MarketDataUpdate
         {
             MarketId = market.MarketId,
-            Timestamp = snapshot.SnapshotTimestamp,
+            AssetId = snapshot.AssetId,
+            Timestamp = ((DateTimeOffset)snapshot.SnapshotTimestamp).ToUnixTimeMilliseconds(),
             Price = snapshot.Price,
+            LastPrice = snapshot.LastPrice,
+            Bid = snapshot.Bid,
+            Ask = snapshot.Ask,
+            Spread = snapshot.Spread,
             ImpliedVolatility = snapshot.ImpliedVolatility,
             Volume24h = snapshot.Volume24h,
-            Liquidity = snapshot.Liquidity
+            Liquidity = snapshot.Liquidity,
+            Outcome = snapshot.Outcome,
+            Category = snapshot.Category,
+            Tags = snapshot.Tags.Split(',').ToList()
         };
     }
 
@@ -580,11 +632,19 @@ public class MarketDataService : IMarketDataService
         return snapshots.Select(s => new MarketDataUpdate
         {
             MarketId = market.MarketId,
-            Timestamp = s.SnapshotTimestamp,
+            AssetId = s.AssetId,
+            Timestamp = ((DateTimeOffset)s.SnapshotTimestamp).ToUnixTimeMilliseconds(),
             Price = s.Price,
+            LastPrice = s.LastPrice,
+            Bid = s.Bid,
+            Ask = s.Ask,
+            Spread = s.Spread,
             ImpliedVolatility = s.ImpliedVolatility,
             Volume24h = s.Volume24h,
-            Liquidity = s.Liquidity
+            Liquidity = s.Liquidity,
+            Outcome = s.Outcome,
+            Category = s.Category,
+            Tags = s.Tags.Split(',').ToList()
         });
     }
 
