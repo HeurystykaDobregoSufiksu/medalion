@@ -1,7 +1,8 @@
 using medalion.ViewModels;
-using medalion.Data;
-using medalion.Services.Alpaca.Interfaces;
-using medalion.Services.Polymarket.Interfaces;
+using Medalion.Data;
+using Medalion.Data.Domain;
+using Medalion.Services.Alpaca.Interfaces;
+using Medalion.Services.Polymarket.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace medalion.Services;
@@ -47,7 +48,7 @@ public class DashboardStateService : IDashboardStateService
         {
             var positions = await _dbContext.Positions
                 .Include(p => p.Asset)
-                .Where(p => p.Status == Data.Domain.PositionStatus.Open && !p.IsDeleted)
+                .Where(p => p.Status == PositionStatus.Open && !p.IsDeleted)
                 .OrderByDescending(p => p.OpenedAt)
                 .Take(50)
                 .ToListAsync();
@@ -96,7 +97,7 @@ public class DashboardStateService : IDashboardStateService
 
             // Calculate total P&L from closed positions today
             var closedPositions = await _dbContext.Positions
-                .Where(p => p.ClosedAt >= today && p.Status == Data.Domain.PositionStatus.Closed && !p.IsDeleted)
+                .Where(p => p.ClosedAt >= today && p.Status == PositionStatus.Closed && !p.IsDeleted)
                 .ToListAsync();
 
             var totalPnL = closedPositions.Sum(p => p.RealizedPnL);
@@ -111,15 +112,15 @@ public class DashboardStateService : IDashboardStateService
                 var hourPnL = closedPositions
                     .Where(p => p.ClosedAt >= hourStart && p.ClosedAt < hourEnd)
                     .Sum(p => p.RealizedPnL);
-                sparklineData.Add(hourPnL);
+                sparklineData.Add(hourPnL??0);
             }
 
             return new DailyStatsViewModel
             {
                 TotalTrades = totalTrades,
-                TotalProfitLoss = totalPnL,
+                TotalProfitLoss = totalPnL??0,
                 WinRate = winRate,
-                AverageTradePnL = avgPnL,
+                AverageTradePnL = avgPnL??0,
                 LastTradeTimestamp = trades.OrderByDescending(t => t.CreatedAt).FirstOrDefault()?.CreatedAt,
                 PnLSparklineData = sparklineData
             };

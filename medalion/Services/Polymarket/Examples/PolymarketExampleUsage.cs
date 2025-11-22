@@ -212,7 +212,7 @@ public class PolymarketExampleUsage
                 LastPrice = new Dictionary<string, decimal>(),
                 Condition = data =>
                 {
-                    var alert = alerts["price_spike"];
+                    var alert = "price_spike";
                     if (alert.LastPrice.TryGetValue(data.MarketId, out var lastPrice))
                     {
                         var change = Math.Abs(data.Price - lastPrice) / lastPrice;

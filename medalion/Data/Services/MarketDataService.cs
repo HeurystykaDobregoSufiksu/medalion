@@ -74,10 +74,7 @@ public class MarketDataService : IMarketDataService
             BidSize = quote.BidSize,
             AskPrice = quote.AskPrice,
             AskSize = quote.AskSize,
-            BidExchange = quote.BidExchange ?? string.Empty,
-            AskExchange = quote.AskExchange ?? string.Empty,
-            Conditions = quote.Conditions != null ? string.Join(",", quote.Conditions) : string.Empty,
-            Tape = quote.Tape ?? string.Empty
+        
         };
 
         var result = await _stockQuoteRepository.AddAsync(snapshot);

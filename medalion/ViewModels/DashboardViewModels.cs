@@ -1,4 +1,4 @@
-using medalion.Data.Domain;
+using Medalion.Data.Domain;
 
 namespace medalion.ViewModels;
 
@@ -145,7 +145,7 @@ public class ErrorViewModel
 
     public static ErrorViewModel FromErrorLog(ErrorLog errorLog)
     {
-        var severity = errorLog.Severity?.ToLower() switch
+        var severity = errorLog.Severity.ToString().ToLower() switch
         {
             "critical" => ErrorSeverity.Critical,
             "error" => ErrorSeverity.Error,

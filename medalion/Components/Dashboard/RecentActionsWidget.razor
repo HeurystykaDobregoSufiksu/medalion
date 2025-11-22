@@ -43,7 +43,7 @@
                                 @action.Side
                             </span>
                             <span class="font-medium text-gray-900">@action.Symbol</span>
-                            <span class="text-sm text-gray-600">@action.Size.ToString("N2") @ $@action.Price.ToString("N2")</span>
+                            <span class="text-sm text-gray-600">@action.Size.ToString("N2") $@action.Price.ToString("N2")</span>
                         </div>
                         <div class="flex items-center gap-3">
                             <span class="badge @GetStatusBadgeClass(action.StatusColor)">

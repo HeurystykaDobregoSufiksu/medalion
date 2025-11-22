@@ -209,20 +209,20 @@ public class PolymarketTradingClient
     /// <summary>
     /// Gets all open orders for the current wallet
     /// </summary>
-    /// <param name="params">Optional filter parameters</param>
+    /// <param name="paramss">Optional filter parameters</param>
     /// <returns>List of open orders</returns>
-    public async Task<List<OpenOrder>> GetOpenOrdersAsync(OpenOrderParams? params = null)
+    public async Task<List<OpenOrder>> GetOpenOrdersAsync(OpenOrderParams? paramss = null)
     {
         try
         {
             var httpClient = _httpClientFactory.CreateClient();
             var url = $"{ClobApiUrl}/orders?owner={_config.WalletAddress}";
 
-            if (params?.Market != null)
-                url += $"&market={params.Market}";
+            if (paramss?.Market != null)
+                url += $"&market={paramss.Market}";
 
-            if (params?.AssetId != null)
-                url += $"&asset_id={params.AssetId}";
+            if (paramss?.AssetId != null)
+                url += $"&asset_id={paramss.AssetId}";
 
             var response = await httpClient.GetStringAsync(url);
             var orders = JsonSerializer.Deserialize<List<OpenOrder>>(response, _jsonOptions) ?? new();
@@ -377,7 +377,7 @@ public class PolymarketTradingClient
                        $"{order.Side}{order.Expiration}{order.Nonce}{order.FeeRateBps}";
 
         // Hash using Keccak256 (Ethereum standard)
-        using var sha3 = new Sha3Keccack();
+        var sha3 = new Sha3Keccack();
         return sha3.CalculateHash(Encoding.UTF8.GetBytes(orderData));
     }
 
