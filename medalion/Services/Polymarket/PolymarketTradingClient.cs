@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Medalion.Services.Polymarket.Models;
+using Nethereum.Hex.HexConvertors.Extensions;
 using Nethereum.Signer;
 using Nethereum.Util;
 
@@ -355,7 +356,7 @@ public class PolymarketTradingClient
             var signature = _ethKey.Sign(orderHash);
 
             // Return signature in hex format with 0x prefix
-            return $"0x{signature.R.ToHex()}{signature.S.ToHex()}{signature.V.ToByteArray().ToHex()}";
+            return $"0x{signature.R.ToHex()}{signature.S.ToHex()}{signature.V.ToHex()}";
         }
         catch (Exception ex)
         {
@@ -376,7 +377,7 @@ public class PolymarketTradingClient
                        $"{order.Side}{order.Expiration}{order.Nonce}{order.FeeRateBps}";
 
         // Hash using Keccak256 (Ethereum standard)
-        using var sha3 = new Sha3Keccak();
+        using var sha3 = new Sha3Keccack();
         return sha3.CalculateHash(Encoding.UTF8.GetBytes(orderData));
     }
 
