@@ -6,4 +6,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- WebSocket support -->
+    <PackageReference Include="System.Net.WebSockets.Client" Version="4.3.2" />
+
+    <!-- HTTP client factory for REST API calls -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="7.0.0" />
+
+    <!-- Logging infrastructure -->
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="7.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="7.0.0" />
+
+    <!-- JSON serialization (included in .NET 7 but explicit for clarity) -->
+    <PackageReference Include="System.Text.Json" Version="7.0.0" />
+  </ItemGroup>
+
 </Project>
