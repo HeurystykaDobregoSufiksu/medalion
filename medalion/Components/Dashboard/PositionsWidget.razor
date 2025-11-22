@@ -1,0 +1,128 @@
+@using medalion.ViewModels
+@inject Services.IDashboardStateService DashboardState
+
+<div class="card">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-900">Open Positions</h3>
+        <span class="badge badge-info">@positions.Count positions</span>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+    }
+    else if (!positions.Any())
+    {
+        <div class="text-center py-8 text-gray-500">
+            <p>No open positions</p>
+        </div>
+    }
+    else
+    {
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="table-header">Symbol</th>
+                        <th class="table-header">Side</th>
+                        <th class="table-header">Size</th>
+                        <th class="table-header">Entry Price</th>
+                        <th class="table-header">Current Price</th>
+                        <th class="table-header">P&L</th>
+                        <th class="table-header">P&L %</th>
+                        @if (positions.Any(p => p.Leverage.HasValue))
+                        {
+                            <th class="table-header">Leverage</th>
+                        }
+                        <th class="table-header text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    @foreach (var position in positions)
+                    {
+                        <tr class="@(position.IsProfit ? "bg-profit-light" : "bg-loss-light") hover:bg-gray-100 transition-colors">
+                            <td class="table-cell font-medium text-gray-900">@position.Symbol</td>
+                            <td class="table-cell">
+                                <span class="badge @(position.Side == "Long" ? "badge-success" : "badge-danger")">
+                                    @position.Side
+                                </span>
+                            </td>
+                            <td class="table-cell text-gray-900">@position.Size.ToString("N2")</td>
+                            <td class="table-cell text-gray-900">$@position.EntryPrice.ToString("N2")</td>
+                            <td class="table-cell text-gray-900">$@position.CurrentPrice.ToString("N2")</td>
+                            <td class="table-cell @(position.IsProfit ? "text-profit" : "text-loss")">
+                                @(position.IsProfit ? "+" : "")$@position.PnLAbsolute.ToString("N2")
+                            </td>
+                            <td class="table-cell @(position.IsProfit ? "text-profit" : "text-loss")">
+                                @(position.IsProfit ? "+" : "")@position.PnLPercent.ToString("N2")%
+                            </td>
+                            @if (positions.Any(p => p.Leverage.HasValue))
+                            {
+                                <td class="table-cell text-gray-900">
+                                    @(position.Leverage?.ToString("N1") ?? "-")x
+                                </td>
+                            }
+                            <td class="table-cell text-right">
+                                <div class="flex gap-2 justify-end">
+                                    <button @onclick="() => ModifyPosition(position.Id)"
+                                            class="btn-secondary btn-sm">
+                                        Modify
+                                    </button>
+                                    <button @onclick="() => ClosePosition(position.Id)"
+                                            class="btn-danger btn-sm">
+                                        Close
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private List<PositionViewModel> positions = new();
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPositions();
+        DashboardState.OnStateChanged += OnStateChanged;
+    }
+
+    private async void OnStateChanged()
+    {
+        await LoadPositions();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadPositions()
+    {
+        isLoading = true;
+        positions = await DashboardState.GetOpenPositionsAsync();
+        isLoading = false;
+    }
+
+    private void ModifyPosition(Guid positionId)
+    {
+        // TODO: Implement position modification dialog
+        Console.WriteLine($"Modify position: {positionId}");
+    }
+
+    private async Task ClosePosition(Guid positionId)
+    {
+        // TODO: Implement close position logic
+        Console.WriteLine($"Close position: {positionId}");
+        // For now, just refresh
+        await LoadPositions();
+    }
+
+    public void Dispose()
+    {
+        DashboardState.OnStateChanged -= OnStateChanged;
+    }
+}

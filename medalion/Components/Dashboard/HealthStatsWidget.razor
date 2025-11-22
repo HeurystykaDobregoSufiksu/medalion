@@ -1,0 +1,203 @@
+@using medalion.ViewModels
+@inject Services.IDashboardStateService DashboardState
+
+<div class="card">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-900">Service Health</h3>
+        <button @onclick="RefreshHealth" class="btn-secondary btn-sm" disabled="@isRefreshing">
+            @if (isRefreshing)
+            {
+                <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            }
+            else
+            {
+                <span>Refresh</span>
+            }
+        </button>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+    }
+    else
+    {
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            @foreach (var service in services)
+            {
+                <div class="border rounded-lg p-4 @GetServiceBorderClass(service.Status) transition-all">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <span class="@GetStatusIndicatorClass(service.Status)"></span>
+                            <h4 class="font-semibold text-gray-900">@service.ServiceName</h4>
+                        </div>
+                        <span class="badge @GetStatusBadgeClass(service.StatusColor)">
+                            @service.StatusText
+                        </span>
+                    </div>
+
+                    <div class="space-y-2 text-sm">
+                        @if (service.LastResponseTime.HasValue)
+                        {
+                            <div class="flex justify-between text-gray-600">
+                                <span>Last Response:</span>
+                                <span class="font-medium">@service.LastResponseTime.Value.ToString("HH:mm:ss")</span>
+                            </div>
+                            <div class="flex justify-between text-gray-600">
+                                <span>Time Since:</span>
+                                <span class="font-medium">@GetTimeSince(service.LastResponseTime.Value)</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-gray-500 italic">No response data available</div>
+                        }
+                    </div>
+
+                    <div class="mt-3 pt-3 border-t border-gray-200">
+                        <button @onclick="() => RetryConnection(service.ServiceName)"
+                                class="w-full btn-primary btn-sm"
+                                disabled="@(service.Status == ServiceStatus.Online)">
+                            @if (service.Status == ServiceStatus.Online)
+                            {
+                                <span>Connected</span>
+                            }
+                            else
+                            {
+                                <span>Retry Connection</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Overall Status Summary -->
+        <div class="mt-4 p-4 rounded-lg @GetOverallStatusClass()">
+            <div class="flex items-center gap-2">
+                @if (AllServicesOnline())
+                {
+                    <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                    </svg>
+                    <span class="font-medium text-green-800">All services operational</span>
+                }
+                else if (AnyServiceOnline())
+                {
+                    <svg class="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                    <span class="font-medium text-yellow-800">Some services experiencing issues</span>
+                }
+                else
+                {
+                    <svg class="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                    </svg>
+                    <span class="font-medium text-red-800">All services offline</span>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<ServiceHealthViewModel> services = new();
+    private bool isLoading = true;
+    private bool isRefreshing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHealthStats();
+        // Auto-refresh every 30 seconds
+        _ = AutoRefreshLoop();
+    }
+
+    private async Task LoadHealthStats()
+    {
+        isLoading = true;
+        services = await DashboardState.GetServiceHealthAsync();
+        isLoading = false;
+    }
+
+    private async Task RefreshHealth()
+    {
+        isRefreshing = true;
+        await LoadHealthStats();
+        isRefreshing = false;
+    }
+
+    private async Task AutoRefreshLoop()
+    {
+        while (true)
+        {
+            await Task.Delay(30000); // 30 seconds
+            await LoadHealthStats();
+            StateHasChanged();
+        }
+    }
+
+    private void RetryConnection(string serviceName)
+    {
+        // TODO: Implement connection retry logic
+        Console.WriteLine($"Retrying connection to {serviceName}");
+    }
+
+    private string GetStatusIndicatorClass(ServiceStatus status)
+    {
+        return status switch
+        {
+            ServiceStatus.Online => "status-online",
+            ServiceStatus.Offline => "status-offline",
+            ServiceStatus.Lagging => "status-lagging",
+            _ => "inline-block w-3 h-3 bg-gray-500 rounded-full"
+        };
+    }
+
+    private string GetStatusBadgeClass(string color)
+    {
+        return color switch
+        {
+            "green" => "badge-success",
+            "red" => "badge-danger",
+            "yellow" => "badge-warning",
+            _ => "badge-info"
+        };
+    }
+
+    private string GetServiceBorderClass(ServiceStatus status)
+    {
+        return status switch
+        {
+            ServiceStatus.Online => "border-green-200 bg-green-50",
+            ServiceStatus.Offline => "border-red-200 bg-red-50",
+            ServiceStatus.Lagging => "border-yellow-200 bg-yellow-50",
+            _ => "border-gray-200"
+        };
+    }
+
+    private string GetOverallStatusClass()
+    {
+        if (AllServicesOnline()) return "bg-green-100 border border-green-200";
+        if (AnyServiceOnline()) return "bg-yellow-100 border border-yellow-200";
+        return "bg-red-100 border border-red-200";
+    }
+
+    private bool AllServicesOnline() => services.All(s => s.Status == ServiceStatus.Online);
+    private bool AnyServiceOnline() => services.Any(s => s.Status == ServiceStatus.Online);
+
+    private string GetTimeSince(DateTime timestamp)
+    {
+        var diff = DateTime.UtcNow - timestamp;
+        if (diff.TotalSeconds < 1) return "Just now";
+        if (diff.TotalSeconds < 60) return $"{(int)diff.TotalSeconds}s ago";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        return $"{(int)diff.TotalDays}d ago";
+    }
+}
