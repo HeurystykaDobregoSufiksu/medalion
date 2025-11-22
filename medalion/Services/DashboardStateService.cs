@@ -140,7 +140,7 @@ public class DashboardStateService : IDashboardStateService
         {
             if (_alpacaClient != null)
             {
-                var isHealthy = await _alpacaClient.GetHealthCheckAsync();
+                var isHealthy = await _alpacaClient.HealthCheckAsync();
                 healthStats.Add(new ServiceHealthViewModel
                 {
                     ServiceName = "Alpaca Markets",
@@ -173,9 +173,9 @@ public class DashboardStateService : IDashboardStateService
         {
             if (_polymarketService != null)
             {
-                var stats = _polymarketService.GetStreamingStats();
-                var isConnected = stats.IsConnected;
-                var lastUpdate = stats.LastMessageReceivedAt;
+                var stats = await _polymarketService.GetStatisticsAsync();
+                var isConnected = _polymarketService.IsConnected;
+                var lastUpdate = stats.LastMessageTime;
 
                 var status = ServiceStatus.Offline;
                 if (isConnected)

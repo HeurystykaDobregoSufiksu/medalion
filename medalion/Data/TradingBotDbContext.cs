@@ -71,6 +71,21 @@ public class TradingBotDbContext : DbContext
         // Apply all configurations
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(TradingBotDbContext).Assembly);
 
+        // Configure global query filter for soft delete
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            if (typeof(BaseEntity).IsAssignableFrom(entityType.ClrType))
+            {
+                var parameter = System.Linq.Expressions.Expression.Parameter(entityType.ClrType, "e");
+                var property = System.Linq.Expressions.Expression.Property(parameter, nameof(BaseEntity.IsDeleted));
+                var filterExpression = System.Linq.Expressions.Expression.Lambda(
+                    System.Linq.Expressions.Expression.Not(property),
+                    parameter);
+
+                modelBuilder.Entity(entityType.ClrType).HasQueryFilter(filterExpression);
+            }
+        }
+
         // Additional global configurations
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
