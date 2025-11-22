@@ -1,0 +1,106 @@
+@page "/dashboard"
+@using medalion.Components.Dashboard
+
+<div class="min-h-screen bg-gray-100 p-4 md:p-6 lg:p-8">
+    <!-- Header -->
+    <div class="mb-6">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Trading Dashboard</h1>
+                <p class="mt-1 text-sm text-gray-600">Real-time monitoring and analytics</p>
+            </div>
+            <div class="mt-4 md:mt-0 flex items-center gap-3">
+                <span class="text-sm text-gray-600">Last updated: @lastUpdateTime.ToString("HH:mm:ss")</span>
+                <button @onclick="RefreshAll"
+                        class="btn-primary"
+                        disabled="@isRefreshing">
+                    @if (isRefreshing)
+                    {
+                        <svg class="animate-spin h-5 w-5 mr-2 inline" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Refreshing...</span>
+                    }
+                    else
+                    {
+                        <svg class="h-5 w-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <span>Refresh All</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Stats -->
+    <div class="mb-6">
+        <DailyStatsWidget />
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
+        <!-- Left Column - Positions (2/3 width on xl screens) -->
+        <div class="xl:col-span-2">
+            <PositionsWidget />
+        </div>
+
+        <!-- Right Column - Health Stats (1/3 width on xl screens) -->
+        <div class="xl:col-span-1">
+            <HealthStatsWidget />
+        </div>
+    </div>
+
+    <!-- Recent Actions and Errors -->
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <!-- Recent Actions -->
+        <div>
+            <RecentActionsWidget />
+        </div>
+
+        <!-- Errors -->
+        <div>
+            <ErrorsWidget />
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="mt-8 text-center text-sm text-gray-500">
+        <p>Medalion Trading Dashboard v1.0 | Connected to Alpaca Markets & Polymarket</p>
+    </div>
+</div>
+
+@code {
+    private DateTime lastUpdateTime = DateTime.UtcNow;
+    private bool isRefreshing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Auto-refresh every 5 seconds
+        _ = AutoRefreshLoop();
+    }
+
+    private async Task RefreshAll()
+    {
+        isRefreshing = true;
+        lastUpdateTime = DateTime.UtcNow;
+        StateHasChanged();
+
+        // Simulate refresh delay
+        await Task.Delay(500);
+
+        isRefreshing = false;
+        StateHasChanged();
+    }
+
+    private async Task AutoRefreshLoop()
+    {
+        while (true)
+        {
+            await Task.Delay(5000); // 5 seconds
+            lastUpdateTime = DateTime.UtcNow;
+            StateHasChanged();
+        }
+    }
+}

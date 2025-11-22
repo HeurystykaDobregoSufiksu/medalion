@@ -1,0 +1,206 @@
+@using medalion.ViewModels
+@inject Services.IDashboardStateService DashboardState
+
+<div class="card">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+            <h3 class="text-lg font-semibold text-gray-900">Errors</h3>
+            @if (unacknowledgedCount > 0)
+            {
+                <span class="badge badge-danger animate-pulse">
+                    @unacknowledgedCount new
+                </span>
+            }
+        </div>
+        <div class="flex gap-2">
+            <button @onclick="ClearAllAcknowledged" class="btn-secondary btn-sm">
+                Clear All
+            </button>
+            <button @onclick="LoadErrors" class="btn-primary btn-sm">
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+    }
+    else if (!errors.Any())
+    {
+        <div class="text-center py-8">
+            <svg class="mx-auto h-12 w-12 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <p class="mt-2 text-sm text-gray-500">No errors to display</p>
+        </div>
+    }
+    else
+    {
+        <!-- Compact error count summary -->
+        <div class="mb-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+            @{
+                var criticalCount = errors.Count(e => e.Severity == ErrorSeverity.Critical);
+                var errorCount = errors.Count(e => e.Severity == ErrorSeverity.Error);
+                var warningCount = errors.Count(e => e.Severity == ErrorSeverity.Warning);
+                var infoCount = errors.Count(e => e.Severity == ErrorSeverity.Info);
+            }
+
+            <div class="flex items-center gap-2 p-2 bg-purple-50 rounded-lg">
+                <div class="w-3 h-3 bg-purple-600 rounded-full"></div>
+                <span class="text-sm font-medium text-gray-700">Critical: @criticalCount</span>
+            </div>
+            <div class="flex items-center gap-2 p-2 bg-red-50 rounded-lg">
+                <div class="w-3 h-3 bg-red-600 rounded-full"></div>
+                <span class="text-sm font-medium text-gray-700">Error: @errorCount</span>
+            </div>
+            <div class="flex items-center gap-2 p-2 bg-yellow-50 rounded-lg">
+                <div class="w-3 h-3 bg-yellow-600 rounded-full"></div>
+                <span class="text-sm font-medium text-gray-700">Warning: @warningCount</span>
+            </div>
+            <div class="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
+                <div class="w-3 h-3 bg-blue-600 rounded-full"></div>
+                <span class="text-sm font-medium text-gray-700">Info: @infoCount</span>
+            </div>
+        </div>
+
+        <!-- Error list -->
+        <div class="space-y-3 max-h-96 overflow-y-auto">
+            @foreach (var error in errors)
+            {
+                <div class="border-l-4 @GetSeverityBorderClass(error.Severity) bg-white rounded-r-lg shadow-sm hover:shadow-md transition-shadow">
+                    <div class="p-4">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="badge @error.SeverityBadge">
+                                        @error.Severity.ToString().ToUpper()
+                                    </span>
+                                    <span class="text-xs text-gray-500">
+                                        @error.Timestamp.ToString("MM/dd/yyyy HH:mm:ss")
+                                    </span>
+                                    @if (!string.IsNullOrEmpty(error.RelatedEntity))
+                                    {
+                                        <span class="badge badge-info">
+                                            @error.RelatedEntity
+                                        </span>
+                                    }
+                                </div>
+
+                                @if (expandedErrorId == error.Id)
+                                {
+                                    <!-- Expanded view -->
+                                    <p class="text-sm text-gray-900 mb-2">@error.Message</p>
+                                    <div class="mt-3 pt-3 border-t border-gray-200">
+                                        <p class="text-xs text-gray-500">Error ID: <code class="bg-gray-100 px-1 py-0.5 rounded">@error.Id</code></p>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <!-- Compact view -->
+                                    <p class="text-sm text-gray-900 line-clamp-1">@error.Message</p>
+                                }
+                            </div>
+
+                            <div class="flex flex-col gap-2 ml-4">
+                                @if (error.IsAcknowledged)
+                                {
+                                    <span class="badge badge-success text-xs">Acknowledged</span>
+                                }
+                                else
+                                {
+                                    <button @onclick="() => AcknowledgeError(error.Id)"
+                                            class="btn-success btn-sm text-xs">
+                                        Acknowledge
+                                    </button>
+                                }
+
+                                <button @onclick="() => ToggleErrorDetails(error.Id)"
+                                        class="btn-secondary btn-sm text-xs">
+                                    @(expandedErrorId == error.Id ? "Collapse" : "Details")
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<ErrorViewModel> errors = new();
+    private bool isLoading = true;
+    private int unacknowledgedCount = 0;
+    private Guid? expandedErrorId = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadErrors();
+        DashboardState.OnStateChanged += OnStateChanged;
+    }
+
+    private async void OnStateChanged()
+    {
+        await LoadErrors();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadErrors()
+    {
+        isLoading = true;
+        errors = await DashboardState.GetRecentErrorsAsync(20);
+        unacknowledgedCount = await DashboardState.GetUnacknowledgedErrorCountAsync();
+        isLoading = false;
+    }
+
+    private void AcknowledgeError(Guid errorId)
+    {
+        var error = errors.FirstOrDefault(e => e.Id == errorId);
+        if (error != null)
+        {
+            error.IsAcknowledged = true;
+            unacknowledgedCount = Math.Max(0, unacknowledgedCount - 1);
+            StateHasChanged();
+        }
+        // TODO: Persist acknowledgment to database
+    }
+
+    private void ClearAllAcknowledged()
+    {
+        errors = errors.Where(e => !e.IsAcknowledged).ToList();
+        StateHasChanged();
+        // TODO: Persist clear action to database
+    }
+
+    private void ToggleErrorDetails(Guid errorId)
+    {
+        if (expandedErrorId == errorId)
+        {
+            expandedErrorId = null;
+        }
+        else
+        {
+            expandedErrorId = errorId;
+        }
+    }
+
+    private string GetSeverityBorderClass(ErrorSeverity severity)
+    {
+        return severity switch
+        {
+            ErrorSeverity.Critical => "border-purple-600",
+            ErrorSeverity.Error => "border-red-600",
+            ErrorSeverity.Warning => "border-yellow-600",
+            ErrorSeverity.Info => "border-blue-600",
+            _ => "border-gray-600"
+        };
+    }
+
+    public void Dispose()
+    {
+        DashboardState.OnStateChanged -= OnStateChanged;
+    }
+}

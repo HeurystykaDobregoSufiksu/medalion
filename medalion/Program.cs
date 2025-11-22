@@ -1,6 +1,10 @@
 using medalion.Data;
+using medalion.Services;
+using medalion.Services.Alpaca.Interfaces;
+using medalion.Services.Polymarket.Interfaces;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,6 +12,23 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddSingleton<WeatherForecastService>();
+
+// Database configuration
+builder.Services.AddDbContext<TradingBotDbContext>(options =>
+{
+    // Use in-memory database for demo/development
+    options.UseInMemoryDatabase("TradingBotDb");
+    // For production, use SQL Server or PostgreSQL:
+    // options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
+    // options.UseNpgsql(builder.Configuration.GetConnectionString("PostgresConnection"));
+});
+
+// Register trading services
+builder.Services.AddScoped<IDashboardStateService, DashboardStateService>();
+
+// Optional: Register Alpaca and Polymarket services if configured
+// builder.Services.AddScoped<IAlpacaApiClient, AlpacaApiClient>();
+// builder.Services.AddScoped<IPolymarketWebSocketService, PolymarketWebSocketService>();
 
 var app = builder.Build();
 

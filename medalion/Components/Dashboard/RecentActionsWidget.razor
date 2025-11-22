@@ -1,0 +1,182 @@
+@using medalion.ViewModels
+@inject Services.IDashboardStateService DashboardState
+
+<div class="card">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-900">Recent Actions</h3>
+        <div class="flex gap-2 items-center">
+            <select @bind="filterType" @bind:after="ApplyFilter"
+                    class="px-3 py-1 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <option value="all">All</option>
+                <option value="buy">Buy Only</option>
+                <option value="sell">Sell Only</option>
+            </select>
+            <button @onclick="ToggleViewMode" class="btn-secondary btn-sm">
+                @(isCompactView ? "Expand" : "Compact")
+            </button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+    }
+    else if (!filteredActions.Any())
+    {
+        <div class="text-center py-8 text-gray-500">
+            <p>No recent actions</p>
+        </div>
+    }
+    else
+    {
+        @if (isCompactView)
+        {
+            <!-- Compact View -->
+            <div class="space-y-2">
+                @foreach (var action in filteredActions)
+                {
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div class="flex items-center gap-3">
+                            <span class="badge @GetSideBadgeClass(action.Side)">
+                                @action.Side
+                            </span>
+                            <span class="font-medium text-gray-900">@action.Symbol</span>
+                            <span class="text-sm text-gray-600">@action.Size.ToString("N2") @ $@action.Price.ToString("N2")</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="badge @GetStatusBadgeClass(action.StatusColor)">
+                                @action.Status
+                            </span>
+                            <span class="text-xs text-gray-500">@GetRelativeTime(action.Timestamp)</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <!-- Expanded View -->
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="table-header">Time</th>
+                            <th class="table-header">Symbol</th>
+                            <th class="table-header">Side</th>
+                            <th class="table-header">Size</th>
+                            <th class="table-header">Price</th>
+                            <th class="table-header">Order ID</th>
+                            <th class="table-header">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        @foreach (var action in filteredActions)
+                        {
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <td class="table-cell text-gray-600">
+                                    <div class="flex flex-col">
+                                        <span class="text-sm">@action.Timestamp.ToString("MM/dd HH:mm:ss")</span>
+                                        <span class="text-xs text-gray-500">@GetRelativeTime(action.Timestamp)</span>
+                                    </div>
+                                </td>
+                                <td class="table-cell font-medium text-gray-900">@action.Symbol</td>
+                                <td class="table-cell">
+                                    <span class="badge @GetSideBadgeClass(action.Side)">
+                                        @action.Side
+                                    </span>
+                                </td>
+                                <td class="table-cell text-gray-900">@action.Size.ToString("N2")</td>
+                                <td class="table-cell text-gray-900">$@action.Price.ToString("N2")</td>
+                                <td class="table-cell">
+                                    <code class="text-xs bg-gray-100 px-2 py-1 rounded">@action.OrderId</code>
+                                </td>
+                                <td class="table-cell">
+                                    <span class="badge @GetStatusBadgeClass(action.StatusColor)">
+                                        @action.Status
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<RecentActionViewModel> allActions = new();
+    private List<RecentActionViewModel> filteredActions = new();
+    private bool isLoading = true;
+    private bool isCompactView = true;
+    private string filterType = "all";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadActions();
+        DashboardState.OnStateChanged += OnStateChanged;
+    }
+
+    private async void OnStateChanged()
+    {
+        await LoadActions();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadActions()
+    {
+        isLoading = true;
+        allActions = await DashboardState.GetRecentActionsAsync(50);
+        ApplyFilter();
+        isLoading = false;
+    }
+
+    private void ApplyFilter()
+    {
+        filteredActions = filterType switch
+        {
+            "buy" => allActions.Where(a => a.Side.Equals("Buy", StringComparison.OrdinalIgnoreCase)).ToList(),
+            "sell" => allActions.Where(a => a.Side.Equals("Sell", StringComparison.OrdinalIgnoreCase)).ToList(),
+            _ => allActions.ToList()
+        };
+    }
+
+    private void ToggleViewMode()
+    {
+        isCompactView = !isCompactView;
+    }
+
+    private string GetSideBadgeClass(string side)
+    {
+        return side.Equals("Buy", StringComparison.OrdinalIgnoreCase)
+            ? "badge-success"
+            : "badge-danger";
+    }
+
+    private string GetStatusBadgeClass(string statusColor)
+    {
+        return statusColor switch
+        {
+            "success" => "badge-success",
+            "warning" => "badge-warning",
+            "danger" => "badge-danger",
+            _ => "badge-info"
+        };
+    }
+
+    private string GetRelativeTime(DateTime timestamp)
+    {
+        var diff = DateTime.UtcNow - timestamp;
+        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        return $"{(int)diff.TotalDays}d ago";
+    }
+
+    public void Dispose()
+    {
+        DashboardState.OnStateChanged -= OnStateChanged;
+    }
+}
