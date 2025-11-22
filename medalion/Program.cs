@@ -1,4 +1,5 @@
 using medalion.Data;
+using medalion.Services;
 using Medalion.Data;
 using Medalion.Data.Repositories;
 using Medalion.Data.Services;
@@ -68,6 +69,9 @@ builder.Services.AddScoped<IPolymarketSnapshotRepository, PolymarketSnapshotRepo
 // Core Trading Services
 builder.Services.AddScoped<ITradingService, TradingService>();
 builder.Services.AddScoped<IMarketDataService, MarketDataService>();
+
+// Dashboard Service
+builder.Services.AddScoped<IDashboardStateService, DashboardStateService>();
 
 // ============================================
 // EXTERNAL API SERVICES

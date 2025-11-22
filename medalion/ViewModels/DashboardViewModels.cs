@@ -17,8 +17,9 @@ public class PositionViewModel
 
     public static PositionViewModel FromPosition(Position position)
     {
+        var unrealizedPnL = position.UnrealizedPnL ?? 0;
         var pnlPercent = position.AverageEntryPrice > 0
-            ? (position.UnrealizedPnL / (position.AverageEntryPrice * position.Quantity)) * 100
+            ? (unrealizedPnL / (position.AverageEntryPrice * position.Quantity)) * 100
             : 0;
 
         return new PositionViewModel
@@ -29,7 +30,7 @@ public class PositionViewModel
             Size = position.Quantity,
             EntryPrice = position.AverageEntryPrice,
             CurrentPrice = position.CurrentPrice ?? 0,
-            PnLAbsolute = position.UnrealizedPnL,
+            PnLAbsolute = unrealizedPnL,
             PnLPercent = pnlPercent,
             Leverage = null // Can be added if supported
         };
